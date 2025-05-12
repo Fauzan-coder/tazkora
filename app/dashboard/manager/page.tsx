@@ -74,27 +74,7 @@ export default async function ManagerDashboard() {
             </div>
             <IssueList />
           </div>
-
-          {/* Reports Section */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-black">Reports</h2>
-              
-            </div>
-          </div>
         </main>
-        
-        {/* Footer */}
-        <footer className="bg-white py-4 px-8 border-t border-gray-200">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-gray-500">© 2025 Your Company</p>
-            <div className="flex space-x-4">
-              <a href="#" className="text-sm text-black hover:text-gray-600 transition-colors">Help</a>
-              <a href="#" className="text-sm text-black hover:text-gray-600 transition-colors">Settings</a>
-              <a href="#" className="text-sm text-black hover:text-gray-600 transition-colors">Support</a>
-            </div>
-          </div>
-        </footer>
       </div>
     </div>
   )

@@ -244,7 +244,7 @@ export default function ReportsPage() {
   if (status === 'unauthenticated') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-lg max-w-4xl w-full">
+        <div className="bg-white p-8 rounded-2xl shadow-lg max-width container mx-auto">
           <div className="p-6 bg-red-50 border border-red-200 rounded-2xl">
             <h2 className="text-2xl font-bold mb-4 text-red-700">Access Denied</h2>
             <p className="text-red-600">You need to be logged in to access this page.</p>
@@ -280,9 +280,9 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-2xl shadow-lg p-8 mb-6">
+    <div className="min-h-screen bg-white">
+      <div className="container mx-auto">
+        <div className="bg-transparent rounded-2xl p-8 mb-6">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center space-x-3">
               <button 
