@@ -69,7 +69,7 @@ export default function Sidebar() {
   return (
     <div className="w-72 bg-white border-r border-gray-200 h-screen overflow-y-auto shadow-lg">
       <div className="p-6 border-b border-gray-200">
-        <h2 className="text-xl font-bold text-black tracking-tight">
+        <h2 className="text-3xl font-bold text-black tracking-tight">
           Tazkora
         </h2>
         <p className="text-xs text-gray-500 mt-1">

@@ -1,11 +1,13 @@
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { authOptions } from '@/app/lib/auth'
 import Header from '@/app/components/layout/Header'
 import Sidebar from '@/app/components/layout/Sidebar'
 import TaskList from '@/app/components/dashboard/TaskList'
 import UserList from '@/app/components/dashboard/UserList'
 import IssueList from '@/app/components/dashboard/IssueList'
+import ProjectList from '@/app/components/dashboard/ProjectList'
 
 export default async function HeadDashboard() {
   const session = await getServerSession(authOptions)
@@ -50,11 +52,22 @@ export default async function HeadDashboard() {
             ))}
           </div>
 
+          {/* Project Management Section */}
+          <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-black">Project Management</h2>
+              <Link href="/dashboard/head/projects/new" 
+                className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                Create New Project
+              </Link>
+            </div>
+            <ProjectList />
+          </div>
+
           {/* User Management Section */}
           <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-semibold text-black">User Management</h2>
-              
             </div>
             <UserList />
           </div>

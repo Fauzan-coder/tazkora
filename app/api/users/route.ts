@@ -109,19 +109,63 @@ export async function GET(request: NextRequest) {
       )
     }
     
+    // Get query parameters
+    const { searchParams } = new URL(request.url)
+    const includeTeams = searchParams.get('includeTeams') === 'true'
+    
     let users
+    
+    // Build select object with optional team memberships
+    const selectObject = {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      createdAt: true,
+      managerId: true,
+      ...(includeTeams && {
+        teamMemberships: {
+          select: {
+            id: true,
+            joinedAt: true,
+            team: {
+              select: {
+                id: true,
+                name: true,
+                description: true,
+                leaderId: true,
+                project: {
+                  select: {
+                    id: true,
+                    name: true,
+                    status: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        ledTeams: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            project: {
+              select: {
+                id: true,
+                name: true,
+                status: true,
+              },
+            },
+          },
+        },
+      }),
+    }
     
     // HEAD can see all users
     if (session.user.role === 'HEAD') {
       users = await prisma.user.findMany({
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          createdAt: true,
-          managerId: true,
-        },
+        select: selectObject,
       })
     } 
     // MANAGER can see only their employees
@@ -130,14 +174,7 @@ export async function GET(request: NextRequest) {
         where: {
           managerId: session.user.id,
         },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          createdAt: true,
-          managerId: true,
-        },
+        select: selectObject,
       })
     }
     

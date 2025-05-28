@@ -6,6 +6,7 @@ import TaskList from '@/app/components/dashboard/TaskList'
 import dynamic from 'next/dynamic'
 import UserList from '@/app/components/dashboard/UserList'
 import IssueList from '@/app/components/dashboard/IssueList'
+import Sidebar from '@/app/components/layout/Sidebar'
 
 export default async function ManagerDashboard() {
   const session = await getServerSession(authOptions)
@@ -20,6 +21,7 @@ export default async function ManagerDashboard() {
   
   return (
     <div className="flex h-screen bg-gray-100">
+      <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header title="Manager Dashboard" />
         <main className="flex-1 overflow-auto p-8 bg-gradient-to-br from-gray-50 to-gray-100">

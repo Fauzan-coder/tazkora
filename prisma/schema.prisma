@@ -16,27 +16,41 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   managerId     String?
-  createdIssues Issue[]  @relation("IssueCreator")
-  assignedTasks Task[]   @relation("TaskAssignee")
-  createdTasks  Task[]   @relation("TaskCreator")
-  managedBy     User?    @relation("ManagesToEmployees", fields: [managerId], references: [id])
-  manages       User[]   @relation("ManagesToEmployees")
+  manager       User?    @relation("ManagesToEmployees", fields: [managerId], references: [id])
+  managedUsers  User[]   @relation("ManagesToEmployees")
+
+  // Relationships
+  createdTasks     Task[]     @relation("TaskCreator")
+  assignedTasks    Task[]     @relation("TaskAssignee")
+  createdIssues    Issue[]    @relation("IssueCreator")
+  teamMemberships  TeamMember[]
+
+  // Projects
+  createdProjects Project[] @relation("ProjectToUser")
+  teamToCreator   Team[]    @relation("TeamToCreator")
+  teamToLeader    Team[]    @relation("TeamToLeader")
 }
 
 model Task {
-  id          String     @id @default(cuid())
-  title       String
-  description String?
-  status      TaskStatus @default(ONGOING)
-  priority    Priority   @default(MEDIUM)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  dueDate     DateTime?
-  creatorId   String
-  assigneeId  String?
+  id           String      @id @default(cuid())
+  title        String
+  description  String?
+  status       TaskStatus  @default(ONGOING)
+  priority     Priority    @default(MEDIUM)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  dueDate      DateTime?
+  creatorId    String
+  assigneeId   String?
+  taskType     TaskType    @default(INDIVIDUAL)
+
+  // Relations
+  creator     User        @relation("TaskCreator", fields: [creatorId], references: [id])
+  assignee    User?       @relation("TaskAssignee", fields: [assigneeId], references: [id])
   issues      Issue[]
-  assignee    User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
-  creator     User       @relation("TaskCreator", fields: [creatorId], references: [id])
+  teamAssignments TeamTask[]  @relation("TeamTaskToTask")
+
+  @@map("tasks")
 }
 
 model Issue {
@@ -48,9 +62,91 @@ model Issue {
   updatedAt   DateTime    @updatedAt
   creatorId   String
   taskId      String?
-  creator     User        @relation("IssueCreator", fields: [creatorId], references: [id])
-  task        Task?       @relation(fields: [taskId], references: [id])
+
+  creator     User       @relation("IssueCreator", fields: [creatorId], references: [id])
+  task        Task?      @relation(fields: [taskId], references: [id])
+
+  @@map("issues")
 }
+
+model Team {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  creatorId   String
+  leaderId    String?
+
+  creator     User       @relation("TeamToCreator", fields: [creatorId], references: [id])
+  leader      User?      @relation("TeamToLeader", fields: [leaderId], references: [id])
+  members     TeamMember[] @relation("TeamMemberToTeam")
+  tasks       TeamTask[]   @relation("TeamTaskToTeam")
+  projects    Project[]    @relation("ProjectToTeam")
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  userId    String
+  teamId    String
+  joinedAt  DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+  team      Team     @relation("TeamMemberToTeam", fields: [teamId], references: [id])
+  updates   TeamUpdate[] @relation("TeamUpdateToMember")
+
+  @@unique([userId, teamId])
+  @@map("team_members")
+}
+
+model TeamTask {
+  id        String   @id @default(cuid())
+  taskId    String
+  teamId    String
+  assignedAt DateTime @default(now())
+
+  task      Task     @relation("TeamTaskToTask", fields: [taskId], references: [id])
+  team      Team     @relation("TeamTaskToTeam", fields: [teamId], references: [id])
+  updates   TeamUpdate[]
+
+  @@unique([taskId, teamId])
+  @@map("team_tasks")
+}
+
+model TeamUpdate {
+  id        String   @id @default(cuid())
+  content   String
+  taskId    String?  // Make this optional
+  teamId    String?  // Make this optional  
+  memberId  String
+  createdAt DateTime @default(now())
+
+  teamTask  TeamTask? @relation(fields: [taskId, teamId], references: [taskId, teamId])
+  member    TeamMember @relation("TeamUpdateToMember", fields: [memberId], references: [id])
+
+  @@map("team_updates")
+}
+
+model Project {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  status      ProjectStatus @default(ONGOING)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  startDate   DateTime?   // Add this field
+  endDate     DateTime?   // Add this field
+  creatorId   String
+
+  creator     User       @relation("ProjectToUser", fields: [creatorId], references: [id])
+  teams       Team[]     @relation("ProjectToTeam")
+
+  @@map("projects")
+}
+
+// Enums
 
 enum Role {
   HEAD
@@ -71,9 +167,22 @@ enum Priority {
   URGENT
 }
 
+enum TaskType {
+  INDIVIDUAL
+  TEAM
+}
+
 enum IssueStatus {
   OPEN
   IN_PROGRESS
   RESOLVED
   CLOSED
+}
+
+enum ProjectStatus {
+  PLANNING    // You can add this new status
+  ONGOING
+  COMPLETED
+  CANCELLED
+  ON_HOLD
 }
