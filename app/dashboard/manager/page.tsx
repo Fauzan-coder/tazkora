@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic'
 import UserList from '@/app/components/dashboard/UserList'
 import IssueList from '@/app/components/dashboard/IssueList'
 import Sidebar from '@/app/components/layout/Sidebar'
+import TeamCards from '@/app/components/dashboard/TeamCards'
 
 export default async function ManagerDashboard() {
   const session = await getServerSession(authOptions)
@@ -76,6 +77,11 @@ export default async function ManagerDashboard() {
             </div>
             <IssueList />
           </div>
+
+          <TeamCards 
+            userId={session.user.id!}
+            userRole={session.user.role as 'HEAD' | 'MANAGER' | 'EMPLOYEE'}
+          />
         </main>
       </div>
     </div>

@@ -60,7 +60,7 @@ export async function PATCH(
       )
     }
     
-    const { status, priority, assigneeId } = await request.json()
+    const { status, priority, assigneeId, workStatus } = await request.json()
     
     // Get the task first to check permissions
     const task = await prisma.task.findUnique({
@@ -72,12 +72,16 @@ export async function PATCH(
             name: true,
             email: true,
             role: true,
-            managerId: true, // Include managerId
+            managerId: true,
           },
         },
         teamAssignments: {
           include: {
-            team: true
+            team: {
+              include: {
+                members: true
+              }
+            }
           }
         }
       }
@@ -90,15 +94,113 @@ export async function PATCH(
       )
     }
     
-    // Check permissions based on role
+    // Check permissions based on role and request type
     if (session.user && session.user.role === 'EMPLOYEE') {
-      // Employees can update status of tasks assigned to them or tasks assigned to teams they're in
+      // For work status updates (start, pause, complete), only the assignee can update
+      if (workStatus) {
+        if (task.assigneeId !== session.user.id) {
+          return NextResponse.json(
+            { message: 'Only the assigned user can update work status' },
+            { status: 403 }
+          )
+        }
+        
+        // Create team update for work status change
+        if (task.teamAssignments.length > 0) {
+          const teamMember = await prisma.teamMember.findFirst({
+            where: {
+              userId: session.user.id,
+              teamId: task.teamAssignments[0].teamId
+            }
+          });
+          
+          if (teamMember) {
+            const statusMessages = {
+              'STARTED': `started working on task: ${task.title}`,
+              'PAUSED': `paused work on task: ${task.title}`,
+              'COMPLETED': `completed task: ${task.title}`
+            };
+            
+            await prisma.teamUpdate.create({
+              data: {
+                content: statusMessages[workStatus as keyof typeof statusMessages] || `updated work status on task: ${task.title}`,
+                taskId: task.id,
+                teamId: task.teamAssignments[0].teamId,
+                memberId: teamMember.id
+              }
+            });
+          }
+        }
+        
+        // Update task with work status
+        const updatedTask = await prisma.task.update({
+          where: { id: params.id },
+          data: {
+            workStatus: workStatus,
+            ...(workStatus === 'COMPLETED' && { status: 'FINISHED' })
+          },
+          include: {
+            creator: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+              }
+            },
+            assignee: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+                managerId: true,
+              }
+            },
+            issues: true,
+            teamAssignments: {
+              include: {
+                team: true,
+                updates: {
+                  include: {
+                    member: {
+                      include: {
+                        user: {
+                          select: {
+                            id: true,
+                            name: true
+                          }
+                        }
+                      }
+                    }
+                  },
+                  orderBy: {
+                    createdAt: 'desc'
+                  }
+                }
+              }
+            }
+          }
+        });
+        
+        return NextResponse.json(updatedTask);
+      }
+      
+      // For regular status updates, employees can update tasks assigned to them or tasks assigned to teams they're in
       const canUpdate = task.assigneeId === session.user.id || 
         await checkTeamMembership(session.user.id, task.teamAssignments.map(ta => ta.teamId));
       
       if (!canUpdate) {
         return NextResponse.json(
           { message: 'Access denied' },
+          { status: 403 }
+        )
+      }
+      
+      // Team members can only update their own assigned tasks for regular updates
+      if (task.assigneeId !== session.user.id) {
+        return NextResponse.json(
+          { message: 'Team members can only update their own assigned tasks' },
           { status: 403 }
         )
       }
@@ -145,7 +247,7 @@ export async function PATCH(
       }
     }
     
-    // Update the task
+    // Update the task (excluding workStatus which is handled above)
     const updatedTask = await prisma.task.update({
       where: { id: params.id },
       data: {
@@ -168,7 +270,7 @@ export async function PATCH(
             name: true,
             email: true,
             role: true,
-            managerId: true, // Include managerId
+            managerId: true,
           }
         },
         issues: true,
@@ -177,7 +279,7 @@ export async function PATCH(
             team: true,
             updates: {
               include: {
-                teamMember: {
+                member: {
                   include: {
                     user: {
                       select: {
@@ -228,12 +330,36 @@ export async function GET(
     if (userId) {
       // Check permissions based on role for viewing user's tasks
       if (session.user?.role === 'EMPLOYEE') {
-        // Employees can only view their own tasks
+        // Employees can view their own tasks or tasks of team members in their teams
         if (userId !== session.user.id) {
-          return NextResponse.json(
-            { message: 'Access denied' },
-            { status: 403 }
-          )
+          // Check if the target user is in the same team
+          const commonTeams = await prisma.team.findMany({
+            where: {
+              AND: [
+                {
+                  members: {
+                    some: {
+                      userId: session.user.id
+                    }
+                  }
+                },
+                {
+                  members: {
+                    some: {
+                      userId: userId
+                    }
+                  }
+                }
+              ]
+            }
+          });
+          
+          if (commonTeams.length === 0) {
+            return NextResponse.json(
+              { message: 'Access denied' },
+              { status: 403 }
+            )
+          }
         }
       } else if (session.user?.role === 'MANAGER') {
         // Managers can view their own tasks or tasks of employees they manage
@@ -262,6 +388,22 @@ export async function GET(
           }
         },
         include: {
+          creator: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            }
+          },
+          assignee: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            }
+          },
           teamAssignments: {
             include: {
               team: true
@@ -336,7 +478,7 @@ export async function GET(
             },
             updates: {
               include: {
-                teamMember: {
+                member: {
                   include: {
                     user: {
                       select: {
@@ -365,7 +507,7 @@ export async function GET(
     
     // Check permission to view the task
     if (session.user?.role === 'EMPLOYEE') {
-      // Employees can view their assigned tasks or tasks assigned to teams they're in
+      // Employees can view their assigned tasks or tasks assigned to team members in their teams
       const isMember = await checkTeamMembership(session.user.id, task.teamAssignments.map(ta => ta.teamId));
       
       if (task.assigneeId !== session.user.id && !isMember) {
@@ -394,15 +536,16 @@ export async function GET(
         )
       }
     }
+    
     const enhancedTask = {
-  ...task,
-  taskOrigin: task.teamAssignments.length > 0 ? 'TEAM' : 'HIERARCHY',
-  teamContext: task.teamAssignments.length > 0 ? {
-    teamId: task.teamAssignments[0].team.id,
-    teamName: task.teamAssignments[0].team.name,
-    isTeamLeader: task.teamAssignments[0].team.leaderId === session.user?.id
-  } : null
-};
+      ...task,
+      taskOrigin: task.teamAssignments.length > 0 ? 'TEAM' : 'HIERARCHY',
+      teamContext: task.teamAssignments.length > 0 ? {
+        teamId: task.teamAssignments[0].team.id,
+        teamName: task.teamAssignments[0].team.name,
+        isTeamLeader: task.teamAssignments[0].team.leaderId === session.user?.id
+      } : null
+    };
     
     return NextResponse.json(enhancedTask)
   } catch (error) {
@@ -429,10 +572,10 @@ export async function PUT(
       )
     }
     
-    // Only HEAD and MANAGER can update tasks
+    // Only HEAD and MANAGER can update tasks using PUT
     if (session.user?.role === 'EMPLOYEE') {
       return NextResponse.json(
-        { message: 'Employees cannot update tasks' },
+        { message: 'Employees cannot update tasks using this method. Use PATCH for status updates.' },
         { status: 403 }
       )
     }
@@ -486,11 +629,54 @@ export async function PUT(
           where: { id: assigneeId },
         })
         
-        if (!assignee || assignee.managerId !== session.user.id) {
+        if (!assignee) {
           return NextResponse.json(
-            { message: 'Cannot assign to this user' },
-            { status: 403 }
+            { message: 'Assignee not found' },
+            { status: 404 }
           )
+        }
+
+        // For managers, check assignment permissions
+        if (session.user?.role === 'MANAGER') {
+          let canAssign = false;
+
+          // If it's a team task, check team membership
+          if (teamId || task.teamAssignments.length > 0) {
+            const targetTeamId = teamId || task.teamAssignments[0].teamId;
+
+            // Check if the assignee is a member of the team
+            const teamMember = await prisma.teamMember.findFirst({
+              where: {
+                teamId: targetTeamId,
+                userId: assigneeId
+              }
+            });
+
+            // Check if manager leads this team
+            const team = await prisma.team.findUnique({
+              where: { id: targetTeamId }
+            });
+
+            if (team && team.leaderId === session.user.id && teamMember) {
+              canAssign = true;
+            }
+          } else {
+            // For individual tasks, use direct management hierarchy
+            if (assignee.managerId === session.user.id) {
+              canAssign = true;
+            }
+          }
+
+          if (!canAssign) {
+            return NextResponse.json(
+              { 
+                message: (teamId || task.teamAssignments.length > 0) 
+                  ? 'Cannot assign to user who is not a member of this team' 
+                  : 'Cannot assign to this user'
+              },
+              { status: 403 }
+            )
+          }
         }
       }
     }
@@ -551,7 +737,6 @@ export async function PUT(
     })
     
     // Handle team assignment if teamId is provided
-    // Replace the team assignment code in the PUT function
     if (teamId) {
       const team = await prisma.team.findUnique({
         where: { id: teamId },
@@ -636,7 +821,7 @@ export async function PUT(
             team: true,
             updates: {
               include: {
-                teamMember: {
+                member: {
                   include: {
                     user: {
                       select: {
@@ -688,7 +873,7 @@ export async function DELETE(
             name: true,
             email: true,
             role: true,
-            managerId: true, // Include managerId
+            managerId: true,
           },
         },
         teamAssignments: {

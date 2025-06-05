@@ -54,11 +54,61 @@ export async function POST(request: NextRequest) {
       if (session.user?.role === 'HEAD') {
         // No restrictions
       } 
-      // MANAGER can only assign to their employees
+      // MANAGER assignment logic
       else if (session.user?.role === 'MANAGER') {
-        if (assignee.managerId !== session.user.id) {
+        let canAssign = false;
+        
+        // If it's a team task, check team membership instead of direct management
+        if (teamId) {
+          // Verify the team exists and the manager leads it
+          const team = await prisma.team.findUnique({
+            where: { id: teamId },
+            include: {
+              members: {
+                where: {
+                  userId: assigneeId
+                }
+              }
+            }
+          })
+          
+          if (!team) {
+            return NextResponse.json(
+              { message: 'Team not found' },
+              { status: 404 }
+            )
+          }
+          
+          // Check if the manager leads this team
+          if (team.leaderId !== session.user.id) {
+            return NextResponse.json(
+              { message: 'Cannot assign tasks to teams you do not lead' },
+              { status: 403 }
+            )
+          }
+          
+          // Check if the assignee is a member of this team
+          if (team.members.length > 0) {
+            canAssign = true;
+          } else {
+            return NextResponse.json(
+              { message: 'Cannot assign task to user who is not a member of this team' },
+              { status: 403 }
+            )
+          }
+        } else {
+          // For non-team tasks, use direct management hierarchy
+          if (assignee.managerId === session.user.id) {
+            canAssign = true;
+          }
+        }
+        
+        if (!canAssign) {
           return NextResponse.json(
-            { message: 'Cannot assign tasks to users you do not manage' },
+            { message: teamId ? 
+              'Cannot assign task to user who is not a member of this team' : 
+              'Cannot assign tasks to users you do not manage' 
+            },
             { status: 403 }
           )
         }
@@ -96,11 +146,12 @@ export async function POST(request: NextRequest) {
         title,
         description,
         priority: priority || 'MEDIUM',
-        status: 'ONGOING', // Match your schema's TaskStatus enum
+        status: 'ONGOING',
+        workStatus: 'NOT_STARTED',
         creatorId: session.user?.id ?? '',
         assigneeId,
         dueDate: dueDate ? new Date(dueDate) : null,
-        taskType: teamId ? 'TEAM' : 'INDIVIDUAL', // This is correct, keep it
+        taskType: teamId ? 'TEAM' : 'INDIVIDUAL',
       },
       include: {
         creator: {
@@ -202,7 +253,7 @@ export async function GET(request: NextRequest) {
         )
       }
       
-      // Get team tasks
+      // Get team tasks - team members can see all tasks assigned to the team
       const teamTasks = await prisma.teamTask.findMany({
         where: {
           teamId: teamId,
@@ -256,18 +307,24 @@ export async function GET(request: NextRequest) {
       })
       
       // Format the response to keep the same structure as before
-      const formattedTasks = teamTasks.map(teamTask => ({
-        ...teamTask.task,
-        teamTaskId: teamTask.id,
-        teamId: teamTask.teamId,
-        updates: teamTask.updates, 
-        taskOrigin: 'TEAM',
-        teamInfo: {
-          teamId: teamId,
-          teamName: team.name,
-          isTeamLeader: team.leaderId === session.user?.id
-        }
-      }))
+      const formattedTasks = teamTasks.map(teamTask => {
+        if (!teamTask.task) return null;
+        
+        return {
+          ...teamTask.task,
+          teamTaskId: teamTask.id,
+          teamId: teamTask.teamId,
+          updates: teamTask.updates,
+          taskOrigin: 'TEAM',
+          teamInfo: {
+            teamId: teamId,
+            teamName: team.name,
+            isTeamLeader: team.leaderId === session.user?.id,
+            canUpdateTask: teamTask.task.assigneeId === session.user?.id // Only assignee can update
+          }
+        };
+      }).filter(Boolean);
+      
       return NextResponse.json(formattedTasks)
     }
     
@@ -410,7 +467,7 @@ export async function GET(request: NextRequest) {
         }
       })
     } 
-    // EMPLOYEE can see tasks assigned to them and tasks for teams they are members of
+    // EMPLOYEE can see tasks assigned to them and ALL tasks for teams they are members of
     else {
       // Get teams the employee is a member of
       const memberTeams = await prisma.teamMember.findMany({
@@ -431,6 +488,7 @@ export async function GET(request: NextRequest) {
           OR: [
             { assigneeId: session.user?.id ?? '' },
             {
+              // Include ALL team tasks, not just those assigned to the user
               teamAssignments: {
                 some: {
                   teamId: { in: teamIds }
@@ -492,8 +550,12 @@ export async function GET(request: NextRequest) {
       teamInfo: task.teamAssignments.length > 0 ? {
         teamId: task.teamAssignments[0].team.id,
         teamName: task.teamAssignments[0].team.name,
-        isTeamLeader: task.teamAssignments[0].team.leaderId === session.user?.id
-      } : null
+        isTeamLeader: task.teamAssignments[0].team.leaderId === session.user?.id,
+        canUpdateTask: task.assigneeId === session.user?.id // Only assignee can update work status
+      } : null,
+      // Add work status visibility for team context
+      workStatusVisible: task.teamAssignments.length > 0 || task.assigneeId === session.user?.id,
+      canUpdateWorkStatus: task.assigneeId === session.user?.id
     }));
 
     return NextResponse.json(enhancedTasks)

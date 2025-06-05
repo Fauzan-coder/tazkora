@@ -444,7 +444,7 @@ export default function TaskManagementPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
             <div className="flex items-center">
               <Link
-                href={`/dashboard/head/teams/${teamId}`}
+                href={`/dashboard/head/ teams/${teamId}`}
                 className="mr-4 p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-full transition-colors"
               >
                 <ArrowLeft className="h-5 w-5" />

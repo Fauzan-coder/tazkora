@@ -1,11 +1,12 @@
+// app/dashboard/employee/page.tsx
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/app/lib/auth'
 import Header from '@/app/components/layout/Header'
 import Sidebar from '@/app/components/layout/Sidebar'
-import dynamic from 'next/dynamic'
 import TaskList from '@/app/components/dashboard/TaskList'
 import IssueList from '@/app/components/dashboard/IssueList'
+import TeamCards from '@/app/components/dashboard/TeamCards'
 
 export default async function EmployeeDashboard() {
   const session = await getServerSession(authOptions)
@@ -55,7 +56,6 @@ export default async function EmployeeDashboard() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-semibold text-black">My Tasks</h2>
             </div>
-            {/* Using the TaskList component to fetch data */}
             <TaskList />
           </div>
           
@@ -63,11 +63,15 @@ export default async function EmployeeDashboard() {
           <div className="bg-white rounded-xl shadow-sm p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-semibold text-black">Issues</h2>
-              
             </div>
-            {/* Using the IssueList component to fetch data */}
             <IssueList />
           </div>
+
+          {/* Team Cards with Client-side Navigation */}
+          <TeamCards 
+            userId={session.user.id!}
+            userRole={session.user.role as 'HEAD' | 'MANAGER' | 'EMPLOYEE'}
+          />
         </main>
       </div>
     </div>

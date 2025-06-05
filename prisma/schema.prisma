@@ -24,6 +24,9 @@ model User {
   assignedTasks    Task[]     @relation("TaskAssignee")
   createdIssues    Issue[]    @relation("IssueCreator")
   teamMemberships  TeamMember[]
+  taskSessions     TaskSession[] @relation("UserTaskSessions")
+  rejectedTasks    Task[]     @relation("TaskRejector")
+  issueComments    IssueComment[] @relation("UserIssueComments")
 
   // Projects
   createdProjects Project[] @relation("ProjectToUser")
@@ -32,25 +35,81 @@ model User {
 }
 
 model Task {
-  id           String      @id @default(cuid())
-  title        String
-  description  String?
-  status       TaskStatus  @default(ONGOING)
-  priority     Priority    @default(MEDIUM)
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  dueDate      DateTime?
-  creatorId    String
-  assigneeId   String?
-  taskType     TaskType    @default(INDIVIDUAL)
+  id              String      @id @default(cuid())
+  title           String
+  description     String?
+  status          TaskStatus  @default(ONGOING)
+  workStatus      WorkStatus  @default(NOT_STARTED)
+  priority        Priority    @default(MEDIUM)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  dueDate         DateTime?
+  creatorId       String
+  assigneeId      String?
+  taskType        TaskType    @default(INDIVIDUAL)
+  
+  // Time tracking fields
+  startedAt       DateTime?
+  pausedAt        DateTime?
+  completedAt     DateTime?
+  totalTimeSpent  Int         @default(0) // in minutes
+  
+  // Task rejection fields
+  rejectionReason String?
+  rejectedBy      String?
+  rejectedAt      DateTime?
+  
+  // Task breakdown and file management
+  taskSteps       Json?       // Array of step objects
+  fileAttachments Json?       // Array of attachment objects
 
   // Relations
-  creator     User        @relation("TaskCreator", fields: [creatorId], references: [id])
-  assignee    User?       @relation("TaskAssignee", fields: [assigneeId], references: [id])
-  issues      Issue[]
+  creator         User        @relation("TaskCreator", fields: [creatorId], references: [id])
+  assignee        User?       @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  rejector        User?       @relation("TaskRejector", fields: [rejectedBy], references: [id])
+  issues          Issue[]
   teamAssignments TeamTask[]  @relation("TeamTaskToTask")
+  sessions        TaskSession[] @relation("TaskToSessions")
+  estimatedHours    Int?        // Estimated completion time
+  actualHours       Float       @default(0) // Calculated from sessions
+  lastActivityAt    DateTime?   // Track last user interaction
+  viewCount         Int         @default(0) // Track task views
+  tags              Json?       // Array of tags for categorization
+  
+  // Dependencies
+  dependencies      TaskDependency[] @relation("DependentTask")
+  dependents        TaskDependency[] @relation("BlockingTask")
 
   @@map("tasks")
+}
+
+// New model for task dependencies
+model TaskDependency {
+  id              String @id @default(cuid())
+  blockingTaskId  String
+  dependentTaskId String
+  createdAt       DateTime @default(now())
+  
+  blockingTask    Task @relation("BlockingTask", fields: [blockingTaskId], references: [id])
+  dependentTask   Task @relation("DependentTask", fields: [dependentTaskId], references: [id])
+  
+  @@unique([blockingTaskId, dependentTaskId])
+}
+
+// New TaskSession model for detailed time tracking
+model TaskSession {
+  id        String            @id @default(cuid())
+  taskId    String
+  userId    String
+  action    SessionAction
+  timestamp DateTime          @default(now())
+  sessionDuration Int?              // Duration in minutes for completed sessions
+  notes     String?
+  
+  task      Task              @relation("TaskToSessions", fields: [taskId], references: [id], onDelete: Cascade)
+  user      User              @relation("UserTaskSessions", fields: [userId], references: [id])
+  
+  @@map("task_sessions")
 }
 
 model Issue {
@@ -58,6 +117,9 @@ model Issue {
   title       String
   description String
   status      IssueStatus @default(OPEN)
+  severity    IssueSeverity @default(MEDIUM)  // New field
+  category    IssueCategory @default(BUG)     // New field
+  fileAttachments Json?                           // Consistent naming
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   creatorId   String
@@ -65,8 +127,24 @@ model Issue {
 
   creator     User       @relation("IssueCreator", fields: [creatorId], references: [id])
   task        Task?      @relation(fields: [taskId], references: [id])
+  issueComments IssueComment[] @relation("IssueToComments")
 
   @@map("issues")
+}
+
+// New IssueComment model for issue discussions
+model IssueComment {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  issueId   String
+  authorId  String
+  
+  issue     Issue    @relation("IssueToComments", fields: [issueId], references: [id], onDelete: Cascade)
+  author    User     @relation("UserIssueComments", fields: [authorId], references: [id])
+  
+  @@map("issue_comments")
 }
 
 model Team {
@@ -118,8 +196,8 @@ model TeamTask {
 model TeamUpdate {
   id        String   @id @default(cuid())
   content   String
-  taskId    String?  // Make this optional
-  teamId    String?  // Make this optional  
+  taskId    String?
+  teamId    String?
   memberId  String
   createdAt DateTime @default(now())
 
@@ -130,14 +208,14 @@ model TeamUpdate {
 }
 
 model Project {
-  id          String      @id @default(cuid())
+  id          String        @id @default(cuid())
   name        String
   description String?
   status      ProjectStatus @default(ONGOING)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  startDate   DateTime?   // Add this field
-  endDate     DateTime?   // Add this field
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  startDate   DateTime?
+  endDate     DateTime?
   creatorId   String
 
   creator     User       @relation("ProjectToUser", fields: [creatorId], references: [id])
@@ -156,8 +234,15 @@ enum Role {
 
 enum TaskStatus {
   ONGOING
-  FINISHED
+  COMPLETED
   BACKLOG
+}
+
+enum WorkStatus {
+  NOT_STARTED
+  STARTED
+  PAUSED
+  COMPLETED
 }
 
 enum Priority {
@@ -175,14 +260,39 @@ enum TaskType {
 enum IssueStatus {
   OPEN
   IN_PROGRESS
-  RESOLVED
+  COMPLETED
   CLOSED
 }
 
 enum ProjectStatus {
-  PLANNING    // You can add this new status
+  PLANNING
   ONGOING
   COMPLETED
   CANCELLED
   ON_HOLD
+}
+
+// New enums for enhanced functionality
+
+enum SessionAction {
+  START
+  PAUSE
+  RESUME
+  COMPLETE
+}
+
+enum IssueSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IssueCategory {
+  BUG
+  ENHANCEMENT
+  QUESTION
+  DOCUMENTATION
+  PERFORMANCE
+  SECURITY
 }
